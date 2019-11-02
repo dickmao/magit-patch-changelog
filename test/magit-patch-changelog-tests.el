@@ -1,0 +1,27 @@
+(require 'cl-lib)
+(require 'ert)
+(require 'magit)
+
+(ert-deftest magit-patch-changelog-basic ()
+  (with-temp-buffer
+    (let ((header "* this is a header "))
+      (put-text-property 0 (length header) 'magit-patch-changelog-header t header)
+      (insert header))
+    (dolist (func '("foo-foo-bar" "baz-bar-baz" "foo-baz-foo"))
+      (put-text-property 0 (length func)
+                         'magit-patch-changelog-loc
+                         (cons (current-buffer)
+                               (cl-loop with sum = 0
+                                        for i from 0 below (length func)
+                                        do (setq sum (+ sum (aref func i)))
+                                        finally return sum))
+                         func)
+      (insert func "\n")
+      (backward-char)
+      (magit-patch--changelog-fixline)
+      (end-of-line)
+      (insert "this is a comment")
+      (forward-line 1))
+    (re-search-backward "foo-foo-bar")
+    (should-not (magit-patch-changelog-agg-up))
+    ))

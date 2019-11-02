@@ -15,7 +15,7 @@ TRAVIS_PULL_REQUEST_SLUG := $(shell git config --global user.name)/$(shell basen
 endif
 endif
 ifeq ($(TRAVIS_PULL_REQUEST_SHA),)
-TRAVIS_PULL_REQUEST_SHA := $(shell git rev-parse origin/$(TRAVIS_PULL_REQUEST_BRANCH))
+TRAVIS_PULL_REQUEST_SHA := $(shell git rev-parse origin/$(TRAVIS_PULL_REQUEST_BRANCH) 2>/dev/null)
 endif
 
 .DEFAULT_GOAL := test-compile
@@ -58,7 +58,7 @@ test-compile: $(CASK)
 
 .PHONY: test-unit
 test-unit: $(CASK)
-	cask exec ert-runner -L . -L test test/magit-patch-changelog*.el
+	cask exec ert-runner -L ./lisp -L . -L test test/magit-patch-changelog*.el
 
 .PHONY: test
 test: test-compile test-unit test-int
@@ -68,7 +68,7 @@ test-int: $(CASK)
 	cask exec ecukes --reporter magnars --debug
 
 .PHONY: clean
-clean: test-clean
+clean:
 	cask clean-elc
 	rm -rf test/test-install
 

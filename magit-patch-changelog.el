@@ -30,6 +30,37 @@
 ;;; Code:
 
 (require 'magit)
+(require 'magit-patch)
+
+(defcustom magit-patch-changelog-fancy-xref nil
+  "Jump to diff referenced by ChangeLog entry after idling one second."
+  :group 'magit-patch-changelog
+  :type 'boolean)
+
+(defvar magit-patch-changelog-local-timer nil
+  "Assigned as a buffer-local variable of COMMIT_EDITMSG.")
+
+(defsubst magit-patch-changelog--forward-to-hunk ()
+  "Move point to hunk, or stay if already in hunk.  Return t if successful."
+  (cl-loop until (or (magit-section-match 'hunk)
+                     (condition-case nil
+                         (magit-section-forward)
+                       (user-error t)))
+           finally return (magit-section-match 'hunk)))
+
+(defun magit-patch-changelog-next-diff ()
+  "Move point to next diff.  Return t if successful."
+  (interactive)
+  (let* ((on-diff-func (lambda () (and (magit-section-match 'hunk) (looking-at "^[+-]"))))
+         (on-diff (funcall on-diff-func)))
+    (when (magit-patch-changelog--forward-to-hunk)
+      (let* ((cur (char-after (point))))
+        (when on-diff
+          (while (looking-at (format "^%c" cur))
+            (forward-line 1)))
+        (cl-loop for next = (re-search-forward "^[+-]" nil t)
+                 until (or (not next) (progn (backward-char) (funcall on-diff-func)))
+                 finally return (and next (point)))))))
 
 (defun magit-patch-changelog-add-log-insert (buffer file defun)
   "As `magit-commit-add-log-insert', and set text properties to xref diffs.
@@ -86,18 +117,18 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
                    "Keymap for the `magit-patch-changelog-mode'."
                    :group 'magit-patch)
 
-(defsubst magit-patch-changelog--single-property-change (x direction limit)
+(defsubst magit-patch-changelog--single-property-change (prop x direction limit)
   "`previous-single-property-change' is off-by-one coming and going.
 
-Position point before character differing in 'magit-patch-changelog-loc of X
-in direction DIRECTION up to LIMIT."
+Return position preceding character differing in PROP of X in
+direction DIRECTION up to LIMIT.  By 'preceding' we mean positionally
+after in the case direction is -1 and before if direction is +1."
   (let ((result
          (funcall (if (< direction 0)
                       #'previous-single-property-change
                     #'next-single-property-change)
                   (if (< direction 0) (min (1+ x) (point-max)) x)
-                  'magit-patch-changelog-loc
-                  nil limit)))
+                  prop nil limit)))
     (if (and result (< direction 0))
         (max (1- result) (point-min) limit)
       result)))
@@ -118,7 +149,7 @@ in direction DIRECTION up to LIMIT."
                        (and x (not (eq x limit)))))
            (next-change-func (lambda (x)
                                (magit-patch-changelog--single-property-change
-                                x direction limit))))
+                                'magit-patch-changelog-loc x direction limit))))
       (when on-ref
         (let ((nspc (funcall next-change-func (point))))
           (when (funcall change-p nspc)
@@ -165,11 +196,15 @@ Returns nil if deleted line, t otherwise."
         (save-excursion
           (end-of-line)
           (unless (eobp) (forward-char))
-          (let ((begin (previous-single-property-change
-                        (point) 'magit-patch-changelog-loc
-                        nil line-beg)))
+          (let ((begin-loc (previous-single-property-change
+                            (point) 'magit-patch-changelog-loc
+                            nil line-beg))
+                (begin-header (previous-single-property-change
+                               (point) 'magit-patch-changelog-header
+                               nil line-beg)))
             (setq commentary (string-trim-left
-                              (buffer-substring begin line-end)
+                              (buffer-substring
+                               (max begin-loc begin-header) line-end)
                               "[(,): ]+"))))
         (setq changelog-refs (nreverse changelog-refs))
         (kill-region line-beg (min (1+ line-end) (point-max)))
@@ -211,82 +246,240 @@ Move (foo, >b< ar) to (foo)\n(bar)."
 (defun magit-patch-changelog--agg (direction)
   "DIRECTION is -1 for up, and +1 for down."
   (if (get-text-property (point) 'magit-patch-changelog-loc)
-      (let ((changelog-header-start (text-property-any (line-beginning-position)
-                                                       (line-end-position)
-                                                       'magit-patch-changelog-header
-                                                       t))
-            (changelog-ref (thing-at-point 'symbol))
-            (bounds (bounds-of-thing-at-point 'symbol))
-            (next-line-p (if (< direction 0)
-                             (lambda (x) (< x (line-beginning-position)))
-                           (lambda (x) (> x (line-end-position)))))
-            (insert-func (lambda (x) (if (< direction 0)
-                                         (progn (forward-char)
-                                                (insert (format " %s " x)))
-                                       (insert (format " %s " x))))))
-        (apply #'kill-region (list (car bounds) (cdr bounds)))
-        (let ((next (save-excursion
-                      (magit-patch-changelog--goto-ref direction))))
-          (cond ((not next)
-                 (cond ((and (< direction 0) changelog-header-start)
-                        (goto-char (text-property-any changelog-header-start
-                                                      (line-end-position)
-                                                      'magit-patch-changelog-header
-                                                      nil))
-                        (funcall insert-func changelog-ref)
-                        (magit-patch-changelog--fixline changelog-ref))
-                       ((not (magit-patch-changelog--fixline))
-                        (beginning-of-line)
-                        (insert "\n")
-                        (backward-char (if (< direction 0) 2 1))
-                        (funcall insert-func changelog-ref)
-                        (magit-patch-changelog--fixline changelog-ref))
-                       (t
-                        (if (< direction 0)
-                            (progn
-                              (beginning-of-line)
-                              (insert "\n")
-                              (backward-char 2))
-                          (end-of-line)
-                          (insert "\n"))
-                        (funcall insert-func changelog-ref)
-                        (magit-patch-changelog--fixline changelog-ref))))
-                ((funcall next-line-p next)
-                 (set-mark (point))
-                 (goto-char next)
-                 (funcall insert-func changelog-ref)
-                 (let ((goback (prog1 (mark t) (pop-mark))))
-                   (set-mark (point))
-                   (goto-char goback))
-                 (magit-patch-changelog--fixline)
-                 (goto-char (mark t))
-                 (pop-mark)
-                 (magit-patch-changelog--fixline changelog-ref))
-                (t
-                 (goto-char (magit-patch-changelog--single-property-change
-                             next direction (if (< direction 0)
-                                                (line-beginning-position)
-                                              (line-end-position))))
-                 (funcall insert-func changelog-ref)
-                 (magit-patch-changelog--fixline changelog-ref)))))
+      (let* ((header-tail
+              (magit-patch-changelog--single-property-change
+               'magit-patch-changelog-header (point) -1 (point-min)))
+             (changelog-ref (thing-at-point 'symbol))
+             (bounds (bounds-of-thing-at-point 'symbol))
+             (next-line-p (if (< direction 0)
+                              (lambda (x) (< x (line-beginning-position)))
+                            (lambda (x) (> x (line-end-position)))))
+             (insert-func (lambda (x) (if (< direction 0)
+                                          (progn (forward-char)
+                                                 (insert (format " %s " x)))
+                                        (insert (format " %s " x))))))
+        (let* ((next (save-excursion
+                       (magit-patch-changelog--goto-ref direction)))
+               (nextm (and next (copy-marker next)))
+               (nextp (and nextm (funcall next-line-p (marker-position nextm))))
+               (limit-func (lambda () (if (< direction 0)
+                                          (line-beginning-position)
+                                        (line-end-position)))))
+          (cl-macrolet ((jimmy
+                         (goback)
+                         `(progn
+                            (setq ,goback (prog1 (copy-marker (point))
+                                            (goto-char (marker-position ,goback))))
+                            (magit-patch-changelog--fixline)
+                            (goto-char (marker-position ,goback)))))
+            ;; "Novice Emacs Lisp programmers often try to use the mark for
+            ;; the wrong purposes. To remember a location for internal use,
+            ;; store it in a Lisp variable."
+            (let ((goback (copy-marker (point))))
+              (cond ((not next)
+                     (cond ((and (< direction 0) header-tail)
+                            (apply #'kill-region (list (car bounds) (cdr bounds)))
+                            (goto-char header-tail)
+                            (funcall insert-func changelog-ref)
+                            (magit-patch-changelog--fixline changelog-ref)
+                            (jimmy goback))
+                           ((and (> direction 0)
+                                 (save-excursion
+                                   (magit-patch-changelog--goto-ref
+                                    -1 (line-beginning-position))))
+                            (apply #'kill-region (list (car bounds) (cdr bounds)))
+                            (end-of-line)
+                            (insert "\n")
+                            (funcall insert-func changelog-ref)
+                            (magit-patch-changelog--fixline changelog-ref)
+                            (jimmy goback))))
+                    (t
+                     (apply #'kill-region (list (car bounds) (cdr bounds)))
+                     (goto-char (marker-position nextm))
+                     (unless nextp
+                       (goto-char (or (magit-patch-changelog--single-property-change
+                                       'magit-patch-changelog-loc
+                                       (marker-position nextm) direction (funcall limit-func))
+                                      (funcall limit-func))))
+                     (funcall insert-func changelog-ref)
+                     (magit-patch-changelog--fixline changelog-ref)
+                     (when nextp (jimmy goback))))))))
     (message "No ChangeLog data at point")))
 
-(defun magit-patch-changelog-xref ()
-  "Jump to diff referenced by text property `magit-patch-changelog-loc'."
-  (interactive)
-  (if-let ((loc (get-text-property (point) 'magit-patch-changelog-loc)))
-      (cl-destructuring-bind (buf . pos) loc
-        (let ((magit-display-buffer-noselect t))
-          (save-window-excursion
-            (save-restriction
-              (with-current-buffer buf
-                (goto-char pos))))))
-    (message "No ChangeLog data at point")))
+(defsubst magit-patch-changelog--contains (prop)
+  "Return first position with non-nil PROP on current line."
+  (let ((line-end (line-end-position)))
+    (save-excursion
+      (beginning-of-line)
+      (unless (bobp) (backward-char))
+      (/= line-end
+          (next-single-property-change
+           (point) prop nil line-end)))))
+
+(defun magit-patch-changelog-xref (&optional explicit-p)
+  "Jump to diff referenced by text property `magit-patch-changelog-loc'.
+
+EXPLICIT-P exploits the 'interactive p' trick to determine if called via [M-.].
+Under EXPLICIT-P, jump to definition at point.  Otherwise, jump to definition of
+first function reference on the line."
+  (interactive "p")
+  (let ((ref-point (if explicit-p
+                       (point)
+                     (let ((line-end (line-end-position)))
+                       (save-excursion
+                         (beginning-of-line)
+                         (unless (bobp) (backward-char))
+                         (magit-patch-changelog--goto-ref 1 line-end))))))
+    (if-let ((loc (and ref-point
+                       (get-text-property ref-point 'magit-patch-changelog-loc))))
+        (cl-destructuring-bind (buf . pos) loc
+          (let ((goback (selected-window))
+                (magit-display-buffer-noselect nil))
+            (magit-display-buffer buf)
+            (with-current-buffer buf
+              (goto-char pos))
+            (select-window goback)))
+      (when explicit-p
+        (message "No ChangeLog data at point")))))
 
 (define-derived-mode magit-patch-changelog-mode text-mode "ChangeLog Edit"
   "Major mode manipulating parenthesized ChangeLog function references.
 
 \\{magit-patch-changelog-mode-map}")
+
+;;;###autoload
+(defun magit-patch-changelog-create (args files)
+  "Compress commits from current branch to master.
+
+ARGS are `transient-args' from `magit-patch-create'.
+Limit patch to FILES, if non-nil."
+  (interactive
+   (let ((args (transient-args 'magit-patch-create)))
+     (list (-filter #'stringp args)
+           (cdr (assoc "--" args)))))
+  (let* ((feature-branch (magit-get-current-branch))
+         (ephemeral-branch (make-temp-name (concat feature-branch "-")))
+         (git-commit-major-mode 'magit-patch-changelog-mode)
+         (format-patch (lambda ()
+                         (let ((default-directory (magit-toplevel)))
+                           (magit-run-git
+                            "format-patch" "HEAD^" args "--" files))))
+         (cleanup (lambda ()
+                    (message "%s" git-commit-post-finish-hook)
+                    (remove-hook 'git-commit-post-finish-hook format-patch)
+                    (ignore-errors
+                      (unless noninteractive
+                        (let ((default-directory (magit-toplevel)))
+                          (unless (string= feature-branch
+                                           (magit-get-current-branch))
+                            (magit-run-git "checkout" feature-branch))
+                          (when (magit-commit-p ephemeral-branch)
+                            (magit-run-git "branch" "-D"
+                                           ephemeral-branch)))))))
+         (cleanup-spoken (apply-partially #'remove-hook
+                                          'kill-emacs-hook cleanup))
+
+         ;; Dynamic-let of `git-commit-setup-hook' is closure-tidy.
+         ;; But because `magit-commit-create' is async, closure needs to be
+         ;; active until emacsclient returns.
+         ;;
+         ;; Alternative: modifying `find-file-hook' to `add-hook' my goodies to
+         ;; a LOCAL version of `git-commit-setup-hook'.
+
+         (git-commit-setup-hook
+          (add-to-list
+           'git-commit-setup-hook
+           (lambda ()
+             (when magit-patch-changelog-fancy-xref
+               (setq-local magit-patch-changelog-local-timer
+                           (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
+             (add-hook 'kill-emacs-hook cleanup)
+             (dolist (hook '(with-editor-post-cancel-hook
+                             with-editor-post-finish-hook))
+               (add-hook hook cleanup-spoken nil 'local)
+               (add-hook hook cleanup        t   'local)
+               (add-hook hook
+                         (lambda ()
+                           (ignore-errors
+                             (cancel-timer magit-patch-changelog-local-timer)
+                             (setq-local magit-patch-changelog-local-timer nil)))
+                         nil 'local)))
+           'append)))
+    (condition-case err
+        (progn
+          (magit-branch-checkout ephemeral-branch "master")
+          (magit-merge-assert)
+          (magit-run-git "merge" "--squash" feature-branch)
+          (cl-assert (memq 'magit-commit-diff server-switch-hook))
+          ;; TODO: make this local when `with-editor-finish' is fixed
+          ;; to avoid bungling buffer-local `git-commit-post-finish-hook'
+          (add-hook 'git-commit-post-finish-hook format-patch)
+          (magit-commit-create)
+          (cl-loop repeat 50
+                   until (magit-commit-message-buffer)
+                   do (sit-for 0.1)
+                   finally
+                   (unless (magit-commit-message-buffer)
+                     (user-error "magit-commit-create failed")))
+          (cl-loop repeat 50
+                   with commit-buffer = (magit-commit-message-buffer)
+                   for diff-buffer = (with-current-buffer commit-buffer
+                                       (magit-get-mode-buffer 'magit-diff-mode))
+                   until diff-buffer
+                   do (sit-for 0.1)
+                   finally
+                   (if diff-buffer
+                       (with-current-buffer diff-buffer
+                         (goto-char (point-min))
+                         (let ((magit-commit-add-log-insert-function
+                                'magit-patch-changelog-add-log-insert))
+                           (while (magit-patch-changelog-next-diff)
+                             (magit-commit-add-log))))
+                     (user-error "magit-commit-diff failed"))
+                   (with-current-buffer commit-buffer
+                     (message (buffer-string)) ;; without this, point appears mid-buffer
+                     (message "")              ;; without this, minibuffer explodes
+                     (when with-editor-show-usage
+                       (with-editor-usage-message))
+
+                     ;; The variable `auto-fill-function' should be buffer local
+                     ;; so this advise shouldn't pollute.
+                     (when auto-fill-function
+                       (add-function
+                        :before-until (symbol-function auto-fill-function)
+                        (lambda (&rest _args)
+                          (and (eq major-mode 'magit-patch-changelog-mode)
+                               (or (magit-patch-changelog--contains
+                                    'magit-patch-changelog-header)
+                                   (magit-patch-changelog--contains
+                                    'magit-patch-changelog-loc))))))
+                     (goto-char (point-min)))))
+      (error (funcall cleanup)
+             (user-error "%s" (error-message-string err))))))
+
+(defun magit-patch-changelog-initialize ()
+  "Doctor magit format-patch menus to include us."
+  (let* ((actions-index (-find-index
+                         (lambda (v)
+                           (string=
+                            "Actions"
+                            (and (consp (aref v 2))
+                                 (plist-get (aref v 2) :description))))
+                         (get 'magit-patch-create 'transient--layout)))
+         (actions-column (nth actions-index
+                              (get 'magit-patch-create 'transient--layout))))
+    (setf (aref actions-column 3)
+          (append (aref actions-column 3)
+                  (transient--parse-child
+                   'magit-patch-create
+                   '("e" "Create patches for Emacs" magit-patch-changelog-create))))
+    (setf (nth actions-index (get 'magit-patch-create 'transient--layout))
+          actions-column)))
+
+(if after-init-time
+    (magit-patch-changelog-initialize)
+  ;; Since I require magit, I assume his after-init-hooks come first.
+  (add-hook 'after-init-hook #'magit-patch-changelog-initialize t))
 
 ;;; _
 (provide 'magit-patch-changelog)

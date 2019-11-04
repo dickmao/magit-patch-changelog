@@ -54,18 +54,18 @@ $(CASK):
 .PHONY: test-compile
 test-compile: $(CASK)
 	-sh -e tools/package-lint.sh $(SRC)
-	! ($cask eval "(let ((byte-compile-error-on-warn t)) (cask-cli/build))" 2>&1 | egrep -a "(Warning|Error):") ; (ret=$$? ; cask clean-elc && exit $$ret)
+	! (cask eval "(let ((byte-compile-error-on-warn t)) (cask-cli/build))" 2>&1 | egrep -a "(Warning|Error):") ; (ret=$$? ; cask clean-elc && exit $$ret)
 
 .PHONY: test-unit
 test-unit: $(CASK)
-	cask exec ert-runner -L ./lisp -L . -L test test/magit-patch-changelog*.el
+	cask exec ert-runner -L ./lisp -L . -L test test/magit-patch-changelog-tests.el
 
 .PHONY: test
 test: test-compile test-unit test-int
 
 .PHONY: test-int
 test-int: $(CASK)
-	cask exec ecukes --reporter magnars --debug
+	cask exec ecukes --reporter magnars
 
 .PHONY: clean
 clean:

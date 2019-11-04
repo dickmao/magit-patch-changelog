@@ -5,4 +5,6 @@
 
 (development
  (depends-on "magit")
+ (depends-on "ecukes")
+ (depends-on "f")
  (depends-on "ert-runner"))

@@ -1,6 +1,7 @@
 (require 'ert)
 (require 'espuds)
 (require 'magit-patch-changelog)
+(require 'anaphora)
 
 (defun magit-patch-changelog-test-wait-for (predicate &optional predargs ms interval continue)
   "Wait until PREDICATE function returns non-`nil'.

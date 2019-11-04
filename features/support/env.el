@@ -21,11 +21,13 @@
 (defun cleanup ()
   )
 
-(push "GIT_AUTHOR_NAME=A U Thor" process-environment)
-(push "GIT_AUTHOR_EMAIL=a.u.thor@example.com" process-environment)
+(defvar test-directory)
 
 (Setup
- )
+  (push "GIT_AUTHOR_NAME=A U Thor" process-environment)
+  (push "GIT_AUTHOR_EMAIL=a.u.thor@example.com" process-environment)
+  ;; cannot get global-magit-file-mode to work, maybe non-noninteractive only
+  (global-set-key "\C-xg" 'magit-status))
 
 (Before
  (setq test-directory (file-name-as-directory (make-temp-file "magit-" t)))
@@ -34,7 +36,7 @@
  (f-touch "./file")
  (magit-git "add" "./file")
  (apply #'magit-git (split-string "commit -m init --allow-empty"))
-)
+ (should (magit-file-tracked-p "file")))
 
 (After
  (delete-directory test-directory t)

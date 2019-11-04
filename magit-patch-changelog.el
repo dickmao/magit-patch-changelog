@@ -365,7 +365,7 @@ Limit patch to FILES, if non-nil."
                            (magit-run-git
                             "format-patch" "HEAD^" args "--" files))))
          (cleanup (lambda ()
-                    (message "%s" git-commit-post-finish-hook)
+                    (kill-local-variable 'git-commit-post-finish-hook) ;; ???
                     (remove-hook 'git-commit-post-finish-hook format-patch)
                     (ignore-errors
                       (unless noninteractive

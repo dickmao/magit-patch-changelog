@@ -1,3 +1,22 @@
+(When "I wait for messages to say \\(.*\\)$"
+  (lambda (message)
+    (magit-patch-changelog-test-wait-for
+     (lambda ()
+       (let* ((message (s-replace "\\\"" "\""
+                                  (substitute-command-keys
+                                   (symbol-value (intern message))))))
+         (-contains? (-map 's-trim ecukes-message-log) message)))
+     nil 2000 300)))
+
+(When "I wait for messages to say \"\\(.*\\)\"$"
+  (lambda (message)
+    (magit-patch-changelog-test-wait-for
+     (lambda ()
+       (let* ((message (s-replace "\\\"" "\""
+                                  (substitute-command-keys message))))
+         (-contains? (-map 's-trim ecukes-message-log) message)))
+     nil 2000 300)))
+
 (When "^eval \"\\(.*\\)\"$"
   (lambda (command)
     (eval (car (read-from-string command)))))

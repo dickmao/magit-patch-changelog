@@ -29,6 +29,17 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'subr-x)
+  (when (version< emacs-version "26.1")
+    (defsubst string-trim-left (string &optional regexp)
+      "Trim STRING of leading string matching REGEXP.
+
+REGEXP defaults to \"[ \\t\\n\\r]+\"."
+      (if (string-match (concat "\\`\\(?:" (or  regexp "[ \t\n\r]+")"\\)") string)
+          (replace-match "" t t string)
+        string))))
+
 (require 'magit)
 (require 'magit-patch)
 
@@ -265,10 +276,10 @@ Returns nil if deleted line, t otherwise."
                 (begin-header (previous-single-property-change
                                (point) 'magit-patch-changelog-header
                                nil line-beg)))
-            (setq commentary (string-trim-left
-                              (buffer-substring
-                               (max begin-loc begin-header) line-end)
-                              "[(,): ]+"))))
+            (setq commentary (let ((s (buffer-substring
+                                       (max begin-loc begin-header)
+                                       line-end)))
+                               (string-trim-left s "[(,): ]+"))))
         (setq changelog-refs (nreverse changelog-refs))
         (kill-region line-beg (min (1+ line-end) (point-max)))
         (when changelog-header
@@ -288,7 +299,7 @@ Returns nil if deleted line, t otherwise."
                                            0 'magit-patch-changelog-loc
                                            triggering))))
         (goto-char goto)))
-    t))
+    t)))
 
 (defsubst magit-patch-changelog-agg-up ()
   "Slurp ref upwards.

@@ -276,10 +276,9 @@ Returns nil if deleted line, t otherwise."
                 (begin-header (previous-single-property-change
                                (point) 'magit-patch-changelog-header
                                nil line-beg)))
-            (setq commentary (let ((s (buffer-substring
-                                       (max begin-loc begin-header)
-                                       line-end)))
-                               (string-trim-left s "[(,): ]+")))))
+            (setq commentary (string-trim-left (buffer-substring
+                                                (max begin-loc begin-header)
+                                                line-end) "[(,): ]+"))))
         (setq changelog-refs (nreverse changelog-refs))
         (kill-region line-beg (min (1+ line-end) (point-max)))
         (when changelog-header

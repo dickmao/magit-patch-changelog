@@ -279,7 +279,7 @@ Returns nil if deleted line, t otherwise."
             (setq commentary (let ((s (buffer-substring
                                        (max begin-loc begin-header)
                                        line-end)))
-                               (string-trim-left s "[(,): ]+"))))
+                               (string-trim-left s "[(,): ]+")))))
         (setq changelog-refs (nreverse changelog-refs))
         (kill-region line-beg (min (1+ line-end) (point-max)))
         (when changelog-header
@@ -290,7 +290,7 @@ Returns nil if deleted line, t otherwise."
           (insert commentary))
         (if (bolp)
             (cl-return nil)
-          (insert "\n"))))
+          (insert "\n")))
     (when triggering
       (when-let ((goto (text-property-any (line-beginning-position)
                                           (line-end-position)

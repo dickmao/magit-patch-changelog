@@ -57,14 +57,21 @@
              (eq 'magit-diff-added-highlight face)
              (eq 'magit-diff-added face)))))
 
-(defsubst magit-patch-changelog--forward-to-diff ()
-  "Move point to diff, or stay if already in diff.
+(defsubst magit-patch-changelog--single-property-change (prop x direction limit)
+  "`previous-single-property-change' is off-by-one coming and going.
 
-Return possibly updated point, nil if no more diffs."
-  (when (magit-patch-changelog--forward-to-hunk)
-    (cl-loop until (or (magit-patch-changelog--within-diff) (eobp))
-             do (magit-patch-changelog--move-next-face)
-             finally return (and (magit-patch-changelog--within-diff) (point)))))
+Return position preceding character differing in PROP of X in
+direction DIRECTION up to LIMIT.  By 'preceding' we mean positionally
+after in the case direction is -1 and before if direction is +1."
+  (let ((result
+         (funcall (if (< direction 0)
+                      #'previous-single-property-change
+                    #'next-single-property-change)
+                  (if (< direction 0) (min (1+ x) (point-max)) x)
+                  prop nil limit)))
+    (if (and result (< direction 0))
+        (max (1- result) (point-min) limit)
+      result)))
 
 (defsubst magit-patch-changelog--next-face ()
   "Return first character with differening font-lock-face.
@@ -79,55 +86,60 @@ Or (point-max), whichever comes first."
 Or (point-max), whichever comes first."
   (goto-char (magit-patch-changelog--next-face)))
 
-(defun magit-patch-changelog-next-defun (previous)
-  "Move point to next diffed defun after symbol PREVIOUS.
+(defsubst magit-patch-changelog--forward-to-diff ()
+  "Move point to diff, or stay if already in diff.
 
-Return next defun symbol if successful, nil otherwise."
-  (when (magit-patch-changelog--forward-to-diff)
-    (save-restriction
-      (let* ((file (cl-loop with s = (oref (magit-current-section) parent)
-                            until (or (not s) (magit-file-section-p s))
-                            do (setq s (oref s :parent))
-                            finally return (oref s value))))
-        (narrow-to-region (point) (magit-patch-changelog--next-face))
-        (let ((narrowed (buffer-string))
-              (line (line-number-at-pos (point))))
-          (with-temp-buffer
-            (insert narrowed)
-            (kill-rectangle (point-min)
-                            (save-excursion
-                              (end-of-buffer) (backward-char)
-                              (1+ (line-beginning-position))))
-            (let (mode
-                  (name file))
-              ;; Remove backup-suffixes from file name.
-              (setq name (file-name-sans-versions name))
-              (while name
-                (setq mode
-                      (or
-                       ;; First match case-sensitively.
-                       (let ((case-fold-search nil))
-                         (assoc-default name auto-mode-alist
-                                        'string-match))
-                       ;; Fallback to case-insensitive match.
-                       (and auto-mode-case-fold
-                            (let ((case-fold-search t))
-                              (assoc-default name auto-mode-alist
-                                             'string-match)))))
-                (if (and mode
-                         (consp mode)
-                         (cadr mode))
-                    (setq mode (car mode)
-                          name (substring name 0 (match-beginning 0)))
-                  (setq name nil))
-                (when mode
-                  (ignore-errors
-                    (set-auto-mode-0 mode)))))
-            (goto-line line)
-            (cl-loop for next-defun = (add-log-current-defun)
-                     until (or (not next-defun) (not (eq next-defun previous)))
-                     do (end-of-defun)
-                     finally return next-defun)))))))
+Return possibly updated point, nil if no more diffs."
+  (when (magit-patch-changelog--forward-to-hunk)
+    (cl-loop until (or (magit-patch-changelog--within-diff) (eobp))
+             do (magit-patch-changelog--move-next-face)
+             finally return (and (magit-patch-changelog--within-diff) (point)))))
+
+(defun magit-patch-changelog-next-diff ()
+  "Move point to next diff.  Return updated point if successful, nil otherwise."
+  (let ((was-on-diff (magit-patch-changelog--within-diff)))
+    (when (magit-patch-changelog--forward-to-diff)
+      (when was-on-diff
+        (magit-patch-changelog--move-next-face))
+      (magit-patch-changelog--forward-to-diff))))
+
+(defun magit-patch-changelog-next-defun (&optional previous)
+  "Move point to next diffed defun after string PREVIOUS denoting a function.
+
+Return next defun string if successful, nil otherwise."
+  (cl-loop
+   initially do (magit-patch-changelog--forward-to-diff)
+   for next-defun =
+   (cl-loop with next-defun-in-block
+            with skip-lines = -1
+            for line-start = (line-number-at-pos (point))
+            for line-end = (line-number-at-pos (magit-patch-changelog--next-face))
+            until (zerop skip-lines)
+            do (pcase-let* ((`(,buf ,pos) (magit-diff-visit-file--noselect)))
+                 (magit--with-temp-position buf pos
+                   (setq next-defun-in-block (add-log-current-defun))
+                   (if (string= next-defun-in-block previous)
+                       (progn
+                         (end-of-defun)
+                         (end-of-defun)
+                         (beginning-of-defun)
+                         (setq skip-lines
+                               (- (line-number-at-pos (point))
+                                  (line-number-at-pos pos))))
+                     (setq skip-lines 0))))
+            do (if (and (> skip-lines 0)
+                        (< skip-lines (- line-end line-start)))
+                   (forward-line skip-lines)
+                 (setq skip-lines 0))
+            finally return (and (not (string= previous next-defun-in-block))
+                                next-defun-in-block))
+   if next-defun
+     return next-defun
+   else
+     unless (magit-patch-changelog-next-diff)
+       return nil
+     end
+   end))
 
 (defun magit-patch-changelog-add-log-insert (buffer file defun)
   "As `magit-commit-add-log-insert', and set text properties to xref diffs.
@@ -183,22 +195,6 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
                      ([M-up] . magit-patch-changelog-agg-up))
                    "Keymap for the `magit-patch-changelog-mode'."
                    :group 'magit-patch)
-
-(defsubst magit-patch-changelog--single-property-change (prop x direction limit)
-  "`previous-single-property-change' is off-by-one coming and going.
-
-Return position preceding character differing in PROP of X in
-direction DIRECTION up to LIMIT.  By 'preceding' we mean positionally
-after in the case direction is -1 and before if direction is +1."
-  (let ((result
-         (funcall (if (< direction 0)
-                      #'previous-single-property-change
-                    #'next-single-property-change)
-                  (if (< direction 0) (min (1+ x) (point-max)) x)
-                  prop nil limit)))
-    (if (and result (< direction 0))
-        (max (1- result) (point-min) limit)
-      result)))
 
 (defun magit-patch-changelog--goto-ref (direction &optional limit)
   "Move point to next ChangeLog ref in DIRECTION up to LIMIT."

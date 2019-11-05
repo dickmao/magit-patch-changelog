@@ -289,7 +289,7 @@ Returns nil if deleted line, t otherwise."
           (insert commentary))
         (if (bolp)
             (cl-return nil)
-          (insert "\n")))
+          (insert "\n"))))
     (when triggering
       (when-let ((goto (text-property-any (line-beginning-position)
                                           (line-end-position)
@@ -298,7 +298,7 @@ Returns nil if deleted line, t otherwise."
                                            0 'magit-patch-changelog-loc
                                            triggering))))
         (goto-char goto)))
-    t)))
+    t))
 
 (defsubst magit-patch-changelog-agg-up ()
   "Slurp ref upwards.

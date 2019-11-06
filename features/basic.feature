@@ -1,3 +1,4 @@
+@cc
 Scenario: C-c C-c
   And magit-command "magit-branch-and-checkout dev master"
   And eval "(with-temp-file "file" (insert (make-temp-name "content")))"
@@ -10,6 +11,7 @@ Scenario: C-c C-c
   And I press "W"
   And I press "c"
   And I press "e"
+  And I dump current buffer
   And I wait for messages to say git-commit-usage-message
   And I press "C-c C-c"
   And eval "(should (f-exists? "0001-Squashed-commit-of-the-following.patch"))"

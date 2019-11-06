@@ -1,5 +1,4 @@
 ;;; env.el --- env.el -*- lexical-binding: t; coding: utf-8 -*-
-
 (custom-set-variables
  '(magit-commit-ask-to-stage nil))
 
@@ -17,11 +16,18 @@
 (require 'magit-patch-changelog-testing)
 (require 'magit-patch-changelog)
 
-
 (defun cleanup ()
   )
 
 (defvar test-directory)
+
+;; (fmakunbound 'split-window-sensibly) ;; emacs-25.1
+
+(add-function :around (symbol-function 'split-window)
+              (lambda (f &rest args)
+                (condition-case nil
+                    (apply f args)
+                  (error nil))))
 
 (Setup
   (push "GIT_AUTHOR_NAME=A U Thor" process-environment)

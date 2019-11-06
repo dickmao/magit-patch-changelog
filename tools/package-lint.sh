@@ -10,7 +10,7 @@ INIT_PACKAGE_EL="(progn
   (require 'package)
   (package-initialize)
   (unless (package-installed-p (quote package-lint))
-    (push (quote (\"melpa\" . \"http://melpa.org/packages/\") package-archives))
+    (push (quote (\"melpa\" . \"http://melpa.org/packages/\")) package-archives)
     (package-refresh-contents)
     (package-install (quote package-lint))))"
 
@@ -44,5 +44,16 @@ BASENAME=$(basename "$1")
 "$EMACS" -Q -batch \
          --eval "$INIT_PACKAGE_EL" \
          -l package-lint.el \
+         --eval "(defconst package-lint--sane-prefixes \
+                   (rx \
+                    string-start \
+                    (or \
+                     \"org-dblock-write:\" \
+                     \"string-trim-left\" \
+                     \"org-babel-execute:\" \
+                     \"org-babel-prep-session:\" \
+                     \"org-babel-variable-assignments:\" \
+                     \"org-babel-default-header-args:\" \
+                     \"pcomplete/\")))" \
          -f package-lint-batch-and-exit \
          "$1" || [ -n "${EMACS_LINT_IGNORE+x}" ]

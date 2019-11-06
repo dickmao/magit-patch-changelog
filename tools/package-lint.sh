@@ -10,7 +10,7 @@ INIT_PACKAGE_EL="(progn
   (require 'package)
   (package-initialize)
   (unless (package-installed-p (quote package-lint))
-    (push (quote (\"melpa\" . \"http://melpa.org/packages/\") package-archives))
+    (push (quote (\"melpa\" . \"http://melpa.org/packages/\")) package-archives)
     (package-refresh-contents)
     (package-install (quote package-lint))))"
 

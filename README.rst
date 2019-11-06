@@ -3,11 +3,11 @@
 Generate a patch according to emacs-mirror/CONTRIBUTING.
 
 .. |build-status|
-   image:: https://travis-ci.org/dickmao/magit-patch-changelog.svg?branch=master
-   :target: https://travis-ci.org/dickmao/magit-patch-changelog
+   image:: https://travis-ci.com/dickmao/magit-patch-changelog.svg?branch=master
+   :target: https://travis-ci.com/dickmao/magit-patch-changelog
    :alt: Build Status
 .. |melpa-dev|
-   image:: https://melpa.org/packages/magit-patch-changelog-badge.svg
+   Image:: https://melpa.org/packages/magit-patch-changelog-badge.svg
    :target: http://melpa.org/#/magit-patch-changelog
    :alt: MELPA current version
 .. |melpa-stable|

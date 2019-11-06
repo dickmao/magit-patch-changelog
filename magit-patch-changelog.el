@@ -137,7 +137,8 @@ Return next defun string if successful, nil otherwise."
                          (setq skip-lines
                                (- (line-number-at-pos (point))
                                   (line-number-at-pos pos))))
-                     (setq skip-lines 0))))
+                     (setq skip-lines 0)))
+                 (kill-buffer buf))
             do (if (and (> skip-lines 0)
                         (< skip-lines (- line-end line-start)))
                    (forward-line skip-lines)
@@ -420,6 +421,38 @@ first function reference on the line."
 
 \\{magit-patch-changelog-mode-map}")
 
+(defun magit-patch-changelog--commit-status ()
+  "Return plist of (:face font-lock-face :content commit-output).
+
+font-lock-face will be one of magit-process-ok, magit-process-ng, or nil."
+  (with-current-buffer (magit-get-mode-buffer 'magit-status-mode)
+    (with-current-buffer (magit-process-buffer t)
+      (goto-char (point-max))
+      (let (side-effect)
+        (magit-section--backward-find
+         (lambda ()
+           (let ((section (magit-current-section)))
+             (and (eq (oref section type) 'process)
+                  (let* ((what (buffer-substring
+                                (oref section start)
+                                (or (oref section content)
+                                    (oref section end))))
+                         (commit (cl-second
+                                  (split-string
+                                   what
+                                   (format "\\s-*%c\\s-*" magit-ellipsis)))))
+                    (let (deactivate-mark)
+                      (when (string-match-p "^commit" commit)
+                        (setq side-effect
+                              `(:content ,(buffer-substring-no-properties
+                                           (or (oref section content)
+                                               (oref section end))
+                                           (oref section end))
+                                         :face    ,(get-text-property
+                                                    (oref section start)
+                                                    'font-lock-face))))))))))
+        side-effect))))
+
 ;;;###autoload
 (defun magit-patch-changelog-create (args files)
   "Compress commits from current branch to master.
@@ -433,22 +466,56 @@ Limit patch to FILES, if non-nil."
   (let* ((feature-branch (magit-get-current-branch))
          (ephemeral-branch (make-temp-name (concat feature-branch "-")))
          (git-commit-major-mode 'magit-patch-changelog-mode)
-         (format-patch (lambda ()
-                         (let ((default-directory (magit-toplevel)))
-                           (magit-run-git
-                            "format-patch" "HEAD^" args "--" files))))
-         (cleanup (lambda ()
-                    (kill-local-variable 'git-commit-post-finish-hook) ;; ???
-                    (remove-hook 'git-commit-post-finish-hook format-patch)
-                    (ignore-errors
-                      (unless noninteractive
-                        (let ((default-directory (magit-toplevel)))
-                          (unless (string= feature-branch
-                                           (magit-get-current-branch))
-                            (magit-run-git "checkout" feature-branch))
-                          (when (magit-commit-p ephemeral-branch)
-                            (magit-run-git "branch" "-D"
-                                           ephemeral-branch)))))))
+         (format-patch
+          (lambda ()
+            (magit-with-toplevel
+              (cl-loop repeat 50
+                       for status = (magit-patch-changelog--commit-status)
+                       until (and status (plist-get status :face))
+                       do (sit-for 0.1)
+                       finally
+                       (let ((avoid-incense
+                              (format "COMMIT_EDITMSG saved in %s"
+                                      (directory-file-name (magit-git-dir))))
+                             (warning-buffer "*Magit ChangeLog*"))
+                         (if status
+                             (if (eq (plist-get status :face)
+                                     'magit-process-ng)
+                                 (display-warning
+                                  'magit-patch-changelog
+                                  (format "\n%s\n%s"
+                                          (plist-get status :content)
+                                          avoid-incense)
+                                  :error
+                                  warning-buffer)
+                               (when (buffer-live-p (get-buffer warning-buffer))
+                                 (kill-buffer warning-buffer))
+                               (magit-run-git
+                                "format-patch" "HEAD^" args "--" files)
+                               (when (member "--cover-letter" args)
+                                   (message "Ignoring --cover-letter")))
+                           (display-warning
+                            'magit-patch-changelog
+                            (format "Unknown commit status\n%s"
+                                    avoid-incense)
+                            :error
+                            warning-buffer)))))))
+         (cleanup
+          (apply-partially
+           (lambda (toplevel)
+             ;; TODO: question the local `git-commit-post-finish-hook'
+             ;; inadvertently created by `with-editor-finish' (also, see TODO below)
+             ;; (kill-local-variable 'git-commit-post-finish-hook)
+             ;; (remove-hook 'git-commit-post-finish-hook format-patch)
+             (ignore-errors
+               (let ((default-directory toplevel))
+                 (unless (string= feature-branch
+                                  (magit-get-current-branch))
+                   (magit-run-git "checkout" feature-branch))
+                 (when (magit-commit-p ephemeral-branch)
+                   (magit-run-git "branch" "-D"
+                                  ephemeral-branch)))))
+           (magit-toplevel)))
          (cleanup-spoken (apply-partially #'remove-hook
                                           'kill-emacs-hook cleanup))
 
@@ -456,7 +523,7 @@ Limit patch to FILES, if non-nil."
          ;; But because `magit-commit-create' is async, closure needs to be
          ;; active until emacsclient returns.
          ;;
-         ;; Alternative: modifying `find-file-hook' to `add-hook' my goodies to
+         ;; Gadget play: modifying `find-file-hook' to `add-hook' my goodies to
          ;; a LOCAL version of `git-commit-setup-hook'.
 
          (git-commit-setup-hook
@@ -467,6 +534,7 @@ Limit patch to FILES, if non-nil."
                (setq-local magit-patch-changelog-local-timer
                            (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
              (add-hook 'kill-emacs-hook cleanup)
+             (add-hook 'with-editor-post-finish-hook format-patch nil t)
              (dolist (hook '(with-editor-post-cancel-hook
                              with-editor-post-finish-hook))
                (add-hook hook cleanup-spoken nil 'local)
@@ -484,9 +552,17 @@ Limit patch to FILES, if non-nil."
           (magit-merge-assert)
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))
-          ;; TODO: make this local when `with-editor-finish' is fixed
-          ;; to avoid bungling buffer-local `git-commit-post-finish-hook'
-          (add-hook 'git-commit-post-finish-hook format-patch)
+
+          ;; TODO: The logic in `with-editor-finish' bungles
+          ;; any user setting of a buffer-local
+          ;; `git-commit-post-finish-hook' since `bound-and-true-p'
+          ;; becomes false when `with-editor-return' kills the
+          ;; COMMIT_MSG buffer.
+
+          ;; So, I have to `add-hook' the global `git-commit-post-finish-hook'
+          ;; and must drudgingly `remove-hook' in cleanup.
+          ;; (add-hook 'git-commit-post-finish-hook format-patch)
+
           (magit-commit-create)
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)
@@ -510,7 +586,7 @@ Limit patch to FILES, if non-nil."
                                 (add-log-current-defun-function
                                  (lambda () my-current-defun)))
                            (while (setq my-current-defun
-                                        (magit-patch-changelog-next-defun))
+                                        (magit-patch-changelog-next-defun my-current-defun))
                              (magit-commit-add-log))))
                      (user-error "magit-commit-diff failed"))
                    (with-current-buffer commit-buffer
@@ -544,12 +620,15 @@ Limit patch to FILES, if non-nil."
                                  (plist-get (aref v 2) :description))))
                          (get 'magit-patch-create 'transient--layout)))
          (actions-column (nth actions-index
-                              (get 'magit-patch-create 'transient--layout))))
-    (setf (aref actions-column 3)
-          (append (aref actions-column 3)
-                  (transient--parse-child
-                   'magit-patch-create
-                   '("e" "Create patches for Emacs" magit-patch-changelog-create))))
+                              (get 'magit-patch-create 'transient--layout)))
+         (actions (aref actions-column 3))
+         (add-entry (car (transient--parse-child
+                          'magit-patch-create
+                          '("e" "Create patches for Emacs"
+                            magit-patch-changelog-create)))))
+    (unless (member add-entry actions)
+      (setq actions (nconc actions (list add-entry))))
+    (setf (aref actions-column 3) actions)
     (setf (nth actions-index (get 'magit-patch-create 'transient--layout))
           actions-column)))
 

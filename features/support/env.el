@@ -23,6 +23,12 @@
 
 ;; (fmakunbound 'split-window-sensibly) ;; emacs-25.1
 
+(add-function :around (symbol-function 'split-window)
+              (lambda (f &rest args)
+                (condition-case nil
+                    (apply f args)
+                  (error nil))))
+
 (Setup
   (push "GIT_AUTHOR_NAME=A U Thor" process-environment)
   (push "GIT_AUTHOR_EMAIL=a.u.thor@example.com" process-environment)

@@ -61,7 +61,7 @@ $(CASK):
 
 .PHONY: test-compile
 test-compile: $(CASK)
-	sh -ex tools/package-lint.sh $(SRC)
+	sh -e tools/package-lint.sh $(SRC)
 	! (cask eval "(let ((byte-compile-error-on-warn t)) (cask-cli/build))" 2>&1 | egrep -a "(Warning|Error):") ; (ret=$$? ; cask clean-elc && exit $$ret)
 
 .PHONY: test-unit

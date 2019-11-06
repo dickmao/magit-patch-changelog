@@ -1,3 +1,17 @@
+(When "I wait for messages to hack \\(.*\\)$"
+  (lambda (message)
+    (magit-patch-changelog-test-wait-for
+     (lambda ()
+       (let* ((raw (symbol-value (intern message)))
+              (upto-command-key
+               (s-replace "\\\"" "\""
+                          (substring raw 0 (cl-search "\\[" raw)))))
+         ;; `substitute-command-keys' seems to depend on window sizing
+         ;; which is compromised by the fmakunbound of `split-window-sensibly'
+         (cl-some (lambda (x) (string-match-p (format "^%s" upto-command-key) x))
+                  (-map 's-trim ecukes-message-log))))
+     nil 2000 300)))
+
 (When "I wait for messages to say \\(.*\\)$"
   (lambda (message)
     (magit-patch-changelog-test-wait-for
@@ -40,6 +54,10 @@
   (lambda (magit-mode)
     (with-current-buffer (magit-mode-get-buffer (intern magit-mode))
       (message "%s" (buffer-string)))))
+
+(When "^I dump current buffer$"
+  (lambda ()
+    (message "%s" (buffer-string))))
 
 (When "^test stuff$"
   (lambda ()

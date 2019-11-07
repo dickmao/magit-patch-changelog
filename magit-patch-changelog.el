@@ -503,27 +503,24 @@ Limit patch to FILES, if non-nil."
          (cleanup
           (apply-partially
            (lambda (toplevel)
-             ;; TODO: question the local `git-commit-post-finish-hook'
-             ;; inadvertently created by `with-editor-finish' (also, see TODO below)
-             ;; (kill-local-variable 'git-commit-post-finish-hook)
-             ;; (remove-hook 'git-commit-post-finish-hook format-patch)
-             (ignore-errors
-               (let ((default-directory toplevel))
-                 (unless (string= feature-branch
-                                  (magit-get-current-branch))
-                   (magit-run-git "checkout" feature-branch))
-                 (when (magit-commit-p ephemeral-branch)
-                   (magit-run-git "branch" "-D"
-                                  ephemeral-branch)))))
+             (let ((default-directory toplevel))
+               (when (timerp magit-patch-changelog-local-timer)
+                 (cancel-timer magit-patch-changelog-local-timer)
+                 (setq-local magit-patch-changelog-local-timer nil))
+               (unless (string= feature-branch (magit-get-current-branch))
+                 (magit-run-git "checkout" feature-branch))
+               (when (magit-commit-p ephemeral-branch)
+                 (magit-run-git "branch" "-D" ephemeral-branch))
+               (dolist (hook '(with-editor-post-cancel-hook
+                               with-editor-post-finish-hook))
+                 (put hook 'permanent-local t))))
            (magit-toplevel)))
-         (cleanup-spoken (apply-partially #'remove-hook
-                                          'kill-emacs-hook cleanup))
 
          ;; Dynamic-let of `git-commit-setup-hook' is closure-tidy.
          ;; But because `magit-commit-create' is async, closure needs to be
          ;; active until emacsclient returns.
          ;;
-         ;; Gadget play: modifying `find-file-hook' to `add-hook' my goodies to
+         ;; Considered: modifying `find-file-hook' to `add-hook' my goodies to
          ;; a LOCAL version of `git-commit-setup-hook'.
 
          (git-commit-setup-hook
@@ -533,18 +530,14 @@ Limit patch to FILES, if non-nil."
              (when magit-patch-changelog-fancy-xref
                (setq-local magit-patch-changelog-local-timer
                            (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
-             (add-hook 'kill-emacs-hook cleanup)
              (add-hook 'with-editor-post-finish-hook format-patch nil t)
+             (add-hook 'kill-emacs-hook cleanup)
              (dolist (hook '(with-editor-post-cancel-hook
                              with-editor-post-finish-hook))
-               (add-hook hook cleanup-spoken nil 'local)
-               (add-hook hook cleanup        t   'local)
                (add-hook hook
-                         (lambda ()
-                           (ignore-errors
-                             (cancel-timer magit-patch-changelog-local-timer)
-                             (setq-local magit-patch-changelog-local-timer nil)))
-                         nil 'local)))
+                         (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
+                         nil t)
+               (add-hook hook cleanup t t)))
            'append)))
     (condition-case err
         (progn
@@ -553,16 +546,9 @@ Limit patch to FILES, if non-nil."
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))
 
-          ;; TODO: The logic in `with-editor-finish' bungles
-          ;; any user setting of a buffer-local
-          ;; `git-commit-post-finish-hook' since `bound-and-true-p'
-          ;; becomes false when `with-editor-return' kills the
-          ;; COMMIT_MSG buffer.
-
-          ;; So, I have to `add-hook' the global `git-commit-post-finish-hook'
-          ;; and must drudgingly `remove-hook' in cleanup.
-          ;; (add-hook 'git-commit-post-finish-hook format-patch)
-
+          (dolist (hook '(with-editor-post-cancel-hook
+                          with-editor-post-finish-hook))
+               (put hook 'permanent-local nil))
           (magit-commit-create)
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)

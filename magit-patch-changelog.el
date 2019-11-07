@@ -338,7 +338,23 @@ Move (foo, >b< ar) to (foo)\n(bar)."
                (nextp (and nextm (funcall next-line-p (marker-position nextm))))
                (limit-func (lambda () (if (< direction 0)
                                           (line-beginning-position)
-                                        (line-end-position)))))
+                                        (line-end-position))))
+               (singleton-p (lambda ()
+                              (and (not (save-excursion
+                                          (magit-patch-changelog--goto-ref
+                                           -1 (line-beginning-position))))
+                                   (not (save-excursion
+                                          (magit-patch-changelog--goto-ref
+                                           1 (line-end-position)))))))
+               (barf-p (lambda ()
+                         (or (and (< direction 0)
+                                  (not (save-excursion
+                                         (magit-patch-changelog--goto-ref
+                                          -1 (line-beginning-position)))))
+                             (and (> direction 0)
+                                  (not (save-excursion
+                                         (magit-patch-changelog--goto-ref
+                                          1 (line-end-position)))))))))
           (cl-macrolet ((jimmy
                          (goback)
                          `(progn
@@ -350,30 +366,34 @@ Move (foo, >b< ar) to (foo)\n(bar)."
             ;; the wrong purposes. To remember a location for internal use,
             ;; store it in a Lisp variable."
             (let ((goback (copy-marker (point))))
-              (cond ((not next)
-                     (cond ((and (< direction 0) header-tail)
-                            (apply #'kill-region (list (car bounds) (cdr bounds)))
-                            (goto-char header-tail)
-                            (funcall insert-func changelog-ref)
-                            (magit-patch-changelog--fixline changelog-ref)
-                            (jimmy goback))
-                           ((and (> direction 0)
-                                 (save-excursion
-                                   (magit-patch-changelog--goto-ref
-                                    -1 (line-beginning-position))))
-                            (apply #'kill-region (list (car bounds) (cdr bounds)))
-                            (end-of-line)
-                            (insert "\n")
-                            (funcall insert-func changelog-ref)
-                            (magit-patch-changelog--fixline changelog-ref)
-                            (jimmy goback))))
+              (cond ((and (not next) (funcall singleton-p)))
+                    ((and (not next) (< direction 0)) ;; special case header fixup
+                     (when header-tail
+                       (apply #'kill-region (list (car bounds) (cdr bounds)))
+                       (goto-char header-tail)
+                       (funcall insert-func changelog-ref)
+                       (magit-patch-changelog--fixline changelog-ref)
+                       (jimmy goback)))
+                    ((and (funcall barf-p) (not (funcall singleton-p)))
+                     (apply #'kill-region (list (car bounds) (cdr bounds)))
+                     (if (< direction 0)
+                         (progn (beginning-of-line)
+                                (insert "\n")
+                                (forward-line -1)
+                                (backward-char))
+                       (end-of-line)
+                       (insert "\n"))
+                     (funcall insert-func changelog-ref)
+                     (magit-patch-changelog--fixline changelog-ref)
+                     (jimmy goback))
                     (t
                      (apply #'kill-region (list (car bounds) (cdr bounds)))
                      (goto-char (marker-position nextm))
                      (unless nextp
                        (goto-char (or (magit-patch-changelog--single-property-change
                                        'magit-patch-changelog-loc
-                                       (marker-position nextm) direction (funcall limit-func))
+                                       (marker-position nextm) direction
+                                       (funcall limit-func))
                                       (funcall limit-func))))
                      (funcall insert-func changelog-ref)
                      (magit-patch-changelog--fixline changelog-ref)

@@ -510,10 +510,7 @@ Limit patch to FILES, if non-nil."
                (unless (string= feature-branch (magit-get-current-branch))
                  (magit-run-git "checkout" feature-branch))
                (when (magit-commit-p ephemeral-branch)
-                 (magit-run-git "branch" "-D" ephemeral-branch))
-               (dolist (hook '(with-editor-post-cancel-hook
-                               with-editor-post-finish-hook))
-                 (put hook 'permanent-local t))))
+                 (magit-run-git "branch" "-D" ephemeral-branch))))
            (magit-toplevel)))
 
          ;; Dynamic-let of `git-commit-setup-hook' is closure-tidy.
@@ -524,31 +521,26 @@ Limit patch to FILES, if non-nil."
          ;; a LOCAL version of `git-commit-setup-hook'.
 
          (git-commit-setup-hook
-          (add-to-list
-           'git-commit-setup-hook
-           (lambda ()
-             (when magit-patch-changelog-fancy-xref
-               (setq-local magit-patch-changelog-local-timer
-                           (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
-             (add-hook 'with-editor-post-finish-hook format-patch nil t)
-             (add-hook 'kill-emacs-hook cleanup)
-             (dolist (hook '(with-editor-post-cancel-hook
-                             with-editor-post-finish-hook))
-               (add-hook hook
-                         (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
-                         nil t)
-               (add-hook hook cleanup t t)))
-           'append)))
+          (append
+           (default-value 'git-commit-setup-hook)
+           `(,(lambda ()
+                (when magit-patch-changelog-fancy-xref
+                  (setq-local magit-patch-changelog-local-timer
+                              (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
+                (add-hook 'with-editor-post-finish-hook format-patch nil t)
+                (add-hook 'kill-emacs-hook cleanup)
+                (dolist (hook '(with-editor-post-cancel-hook
+                                with-editor-post-finish-hook))
+                  (add-hook hook
+                            (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
+                            nil t)
+                  (add-hook hook cleanup t t)))))))
     (condition-case err
         (progn
           (magit-branch-checkout ephemeral-branch "master")
           (magit-merge-assert)
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))
-
-          (dolist (hook '(with-editor-post-cancel-hook
-                          with-editor-post-finish-hook))
-               (put hook 'permanent-local nil))
           (magit-commit-create)
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)

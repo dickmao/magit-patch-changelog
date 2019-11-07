@@ -9,9 +9,9 @@ EMACS="${EMACS:=emacs}"
 INIT_PACKAGE_EL="(progn
   (require 'package)
   (package-initialize)
+  (push (quote (\"melpa\" . \"http://melpa.org/packages/\")) package-archives)
+  (package-refresh-contents)
   (unless (package-installed-p (quote package-lint))
-    (push (quote (\"melpa\" . \"http://melpa.org/packages/\")) package-archives)
-    (package-refresh-contents)
     (package-install (quote package-lint))))"
 
 # rm -rf "$HOME"/.emacs.d/elpa/package-lint-*

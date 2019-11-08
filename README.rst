@@ -1,6 +1,6 @@
 |build-status|
 
-Generate a patch according to emacs-mirror/CONTRIBUTING.
+Generate a patch according to emacs-mirror/CONTRIBUTE.
 
 .. |build-status|
    image:: https://travis-ci.com/dickmao/magit-patch-changelog.svg?branch=master

@@ -1,6 +1,6 @@
 |build-status|
 
-Generate a patch according to emacs-mirror/CONTRIBUTING.
+Generate a patch according to emacs-mirror/CONTRIBUTE.
 
 .. |build-status|
    image:: https://travis-ci.com/dickmao/magit-patch-changelog.svg?branch=master
@@ -15,7 +15,7 @@ Generate a patch according to emacs-mirror/CONTRIBUTING.
    :target: http://melpa-stable.milkbox.net/#/ein
    :alt: MELPA stable version
 
-.. image:: screenshot.png
+.. image:: screencast.gif
 
 Install
 =======
@@ -34,10 +34,8 @@ Alternatively, copy ``magit-patch-changelog.el`` to a directory among ``C-h v RE
 
 Usage
 =====
+From the magit status buffer (``C-x g``)::
 
-::
-
-   C-x g
-   W RET c RET e
+   W c e
 
 .. _Getting started: http://melpa.org/#/getting-started

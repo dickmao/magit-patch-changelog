@@ -16,10 +16,11 @@
 (require 'magit-patch-changelog-testing)
 (require 'magit-patch-changelog)
 
-(defun cleanup ()
-  )
+(defvar test-directories nil)
 
-(defvar test-directory)
+(defun cleanup ()
+  (dolist (dir test-directories)
+    (delete-directory dir t)))
 
 ;; (fmakunbound 'split-window-sensibly) ;; emacs-25.1
 
@@ -36,8 +37,7 @@
   (global-set-key "\C-xg" 'magit-status))
 
 (Before
- (setq test-directory (file-name-as-directory (make-temp-file "magit-" t)))
- (setq default-directory test-directory)
+ (setq default-directory (file-name-as-directory (make-temp-file "magit-" t)))
  (magit-git "init" ".")
  (f-touch "./file")
  (magit-git "add" "./file")
@@ -45,7 +45,6 @@
  (should (magit-file-tracked-p "file")))
 
 (After
- (delete-directory test-directory t)
  (setq default-directory (root-path))
  )
 

@@ -1,4 +1,4 @@
-;;; magit-patch-changelog.el --- Git format-patch for CONTRIBUTING -*- lexical-binding: t; coding: utf-8 -*-
+;;; magit-patch-changelog.el --- Git format-patch for CONTRIBUTE -*- lexical-binding: t; coding: utf-8 -*-
 
 ;; Copyright (C) 2019 The Authors of magit-patch-changelog.el
 
@@ -6,7 +6,7 @@
 ;; Version: 0.1.0
 ;; Keywords: git tools vc
 ;; URL: https://github.com/dickmao/magit-patch-changelog
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "25.1") (magit "2.91.0"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -21,11 +21,11 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with nnhackernews.el.  If not, see <https://www.gnu.org/licenses/>.
+;; along with magit-patch-changelog.el.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; Generate a patch according to emacs-mirror/CONTRIBUTING.
+;; Generate a patch according to emacs-mirror/CONTRIBUTE.
 
 ;;; Code:
 
@@ -211,10 +211,11 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
 (defun magit-patch-changelog--goto-ref (direction &optional limit)
   "Move point to next ChangeLog ref in DIRECTION up to LIMIT."
   (unless limit
-    (setq limit (funcall (if (< direction 0)
-                             #'previous-single-property-change
-                           #'next-single-property-change)
-                         (point) 'magit-patch-changelog-header)))
+    (setq limit (or (funcall (if (< direction 0)
+                                 #'previous-single-property-change
+                               #'next-single-property-change)
+                             (point) 'magit-patch-changelog-header)
+                    (if (< direction 0) (point-min) (point-max)))))
   (cl-block nil
     (let* ((orig (point))
            (on-ref-func (lambda (x) (get-text-property
@@ -338,7 +339,23 @@ Move (foo, >b< ar) to (foo)\n(bar)."
                (nextp (and nextm (funcall next-line-p (marker-position nextm))))
                (limit-func (lambda () (if (< direction 0)
                                           (line-beginning-position)
-                                        (line-end-position)))))
+                                        (line-end-position))))
+               (singleton-p (lambda ()
+                              (and (not (save-excursion
+                                          (magit-patch-changelog--goto-ref
+                                           -1 (line-beginning-position))))
+                                   (not (save-excursion
+                                          (magit-patch-changelog--goto-ref
+                                           1 (line-end-position)))))))
+               (barf-p (lambda ()
+                         (or (and (< direction 0)
+                                  (not (save-excursion
+                                         (magit-patch-changelog--goto-ref
+                                          -1 (line-beginning-position)))))
+                             (and (> direction 0)
+                                  (not (save-excursion
+                                         (magit-patch-changelog--goto-ref
+                                          1 (line-end-position)))))))))
           (cl-macrolet ((jimmy
                          (goback)
                          `(progn
@@ -350,30 +367,34 @@ Move (foo, >b< ar) to (foo)\n(bar)."
             ;; the wrong purposes. To remember a location for internal use,
             ;; store it in a Lisp variable."
             (let ((goback (copy-marker (point))))
-              (cond ((not next)
-                     (cond ((and (< direction 0) header-tail)
-                            (apply #'kill-region (list (car bounds) (cdr bounds)))
-                            (goto-char header-tail)
-                            (funcall insert-func changelog-ref)
-                            (magit-patch-changelog--fixline changelog-ref)
-                            (jimmy goback))
-                           ((and (> direction 0)
-                                 (save-excursion
-                                   (magit-patch-changelog--goto-ref
-                                    -1 (line-beginning-position))))
-                            (apply #'kill-region (list (car bounds) (cdr bounds)))
-                            (end-of-line)
-                            (insert "\n")
-                            (funcall insert-func changelog-ref)
-                            (magit-patch-changelog--fixline changelog-ref)
-                            (jimmy goback))))
+              (cond ((and (not next) (funcall singleton-p)))
+                    ((and (not next) (< direction 0)) ;; special case header fixup
+                     (when header-tail
+                       (apply #'kill-region (list (car bounds) (cdr bounds)))
+                       (goto-char header-tail)
+                       (funcall insert-func changelog-ref)
+                       (magit-patch-changelog--fixline changelog-ref)
+                       (jimmy goback)))
+                    ((and (funcall barf-p) (not (funcall singleton-p)))
+                     (apply #'kill-region (list (car bounds) (cdr bounds)))
+                     (if (< direction 0)
+                         (progn (beginning-of-line)
+                                (insert "\n")
+                                (forward-line -1)
+                                (backward-char))
+                       (end-of-line)
+                       (insert "\n"))
+                     (funcall insert-func changelog-ref)
+                     (magit-patch-changelog--fixline changelog-ref)
+                     (jimmy goback))
                     (t
                      (apply #'kill-region (list (car bounds) (cdr bounds)))
                      (goto-char (marker-position nextm))
                      (unless nextp
                        (goto-char (or (magit-patch-changelog--single-property-change
                                        'magit-patch-changelog-loc
-                                       (marker-position nextm) direction (funcall limit-func))
+                                       (marker-position nextm) direction
+                                       (funcall limit-func))
                                       (funcall limit-func))))
                      (funcall insert-func changelog-ref)
                      (magit-patch-changelog--fixline changelog-ref)
@@ -503,66 +524,44 @@ Limit patch to FILES, if non-nil."
          (cleanup
           (apply-partially
            (lambda (toplevel)
-             ;; TODO: question the local `git-commit-post-finish-hook'
-             ;; inadvertently created by `with-editor-finish' (also, see TODO below)
-             ;; (kill-local-variable 'git-commit-post-finish-hook)
-             ;; (remove-hook 'git-commit-post-finish-hook format-patch)
-             (ignore-errors
-               (let ((default-directory toplevel))
-                 (unless (string= feature-branch
-                                  (magit-get-current-branch))
-                   (magit-run-git "checkout" feature-branch))
-                 (when (magit-commit-p ephemeral-branch)
-                   (magit-run-git "branch" "-D"
-                                  ephemeral-branch)))))
+             (let ((default-directory toplevel))
+               (when (timerp magit-patch-changelog-local-timer)
+                 (cancel-timer magit-patch-changelog-local-timer)
+                 (setq-local magit-patch-changelog-local-timer nil))
+               (unless (string= feature-branch (magit-get-current-branch))
+                 (magit-run-git "checkout" feature-branch))
+               (when (magit-commit-p ephemeral-branch)
+                 (magit-run-git "branch" "-D" ephemeral-branch))))
            (magit-toplevel)))
-         (cleanup-spoken (apply-partially #'remove-hook
-                                          'kill-emacs-hook cleanup))
 
          ;; Dynamic-let of `git-commit-setup-hook' is closure-tidy.
          ;; But because `magit-commit-create' is async, closure needs to be
          ;; active until emacsclient returns.
          ;;
-         ;; Gadget play: modifying `find-file-hook' to `add-hook' my goodies to
+         ;; Considered: modifying `find-file-hook' to `add-hook' my goodies to
          ;; a LOCAL version of `git-commit-setup-hook'.
 
          (git-commit-setup-hook
-          (add-to-list
-           'git-commit-setup-hook
-           (lambda ()
-             (when magit-patch-changelog-fancy-xref
-               (setq-local magit-patch-changelog-local-timer
-                           (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
-             (add-hook 'kill-emacs-hook cleanup)
-             (add-hook 'with-editor-post-finish-hook format-patch nil t)
-             (dolist (hook '(with-editor-post-cancel-hook
-                             with-editor-post-finish-hook))
-               (add-hook hook cleanup-spoken nil 'local)
-               (add-hook hook cleanup        t   'local)
-               (add-hook hook
-                         (lambda ()
-                           (ignore-errors
-                             (cancel-timer magit-patch-changelog-local-timer)
-                             (setq-local magit-patch-changelog-local-timer nil)))
-                         nil 'local)))
-           'append)))
+          (append
+           (default-value 'git-commit-setup-hook)
+           `(,(lambda ()
+                (when magit-patch-changelog-fancy-xref
+                  (setq-local magit-patch-changelog-local-timer
+                              (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
+                (add-hook 'with-editor-post-finish-hook format-patch nil t)
+                (add-hook 'kill-emacs-hook cleanup)
+                (dolist (hook '(with-editor-post-cancel-hook
+                                with-editor-post-finish-hook))
+                  (add-hook hook
+                            (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
+                            nil t)
+                  (add-hook hook cleanup t t)))))))
     (condition-case err
         (progn
           (magit-branch-checkout ephemeral-branch "master")
           (magit-merge-assert)
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))
-
-          ;; TODO: The logic in `with-editor-finish' bungles
-          ;; any user setting of a buffer-local
-          ;; `git-commit-post-finish-hook' since `bound-and-true-p'
-          ;; becomes false when `with-editor-return' kills the
-          ;; COMMIT_MSG buffer.
-
-          ;; So, I have to `add-hook' the global `git-commit-post-finish-hook'
-          ;; and must drudgingly `remove-hook' in cleanup.
-          ;; (add-hook 'git-commit-post-finish-hook format-patch)
-
           (magit-commit-create)
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)

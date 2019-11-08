@@ -211,10 +211,11 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
 (defun magit-patch-changelog--goto-ref (direction &optional limit)
   "Move point to next ChangeLog ref in DIRECTION up to LIMIT."
   (unless limit
-    (setq limit (funcall (if (< direction 0)
-                             #'previous-single-property-change
-                           #'next-single-property-change)
-                         (point) 'magit-patch-changelog-header)))
+    (setq limit (or (funcall (if (< direction 0)
+                                 #'previous-single-property-change
+                               #'next-single-property-change)
+                             (point) 'magit-patch-changelog-header)
+                    (if (< direction 0) (point-min) (point-max)))))
   (cl-block nil
     (let* ((orig (point))
            (on-ref-func (lambda (x) (get-text-property

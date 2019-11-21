@@ -432,7 +432,8 @@ first function reference on the line."
                 (magit-display-buffer-noselect nil))
             (magit-display-buffer buf)
             (with-current-buffer buf
-              (goto-char pos))
+              (goto-char pos)
+              (set-window-start (get-buffer-window) (point)))
             (select-window goback)))
       (when explicit-p
         (message "No ChangeLog data at point")))))

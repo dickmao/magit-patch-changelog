@@ -610,32 +610,8 @@ Limit patch to FILES, if non-nil."
       (error (funcall cleanup)
              (user-error "%s" (error-message-string err))))))
 
-(defun magit-patch-changelog-initialize ()
-  "Doctor magit format-patch menus to include us."
-  (let* ((actions-index (-find-index
-                         (lambda (v)
-                           (string=
-                            "Actions"
-                            (and (consp (aref v 2))
-                                 (plist-get (aref v 2) :description))))
-                         (get 'magit-patch-create 'transient--layout)))
-         (actions-column (nth actions-index
-                              (get 'magit-patch-create 'transient--layout)))
-         (actions (aref actions-column 3))
-         (add-entry (car (transient--parse-child
-                          'magit-patch-create
-                          '("e" "Create patches for Emacs"
-                            magit-patch-changelog-create)))))
-    (unless (member add-entry actions)
-      (setq actions (nconc actions (list add-entry))))
-    (setf (aref actions-column 3) actions)
-    (setf (nth actions-index (get 'magit-patch-create 'transient--layout))
-          actions-column)))
-
-(if after-init-time
-    (magit-patch-changelog-initialize)
-  ;; Since I require magit, I assume his after-init-hooks come first.
-  (add-hook 'after-init-hook #'magit-patch-changelog-initialize t))
+(transient-append-suffix 'magit-patch-create "c"
+  '("e" "Create patches for Emacs" magit-patch-changelog-create))
 
 ;;; _
 (provide 'magit-patch-changelog)

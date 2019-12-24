@@ -29,17 +29,6 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'subr-x)
-  (when (version< emacs-version "26.1")
-    (defsubst string-trim-left (string &optional regexp)
-      "Trim STRING of leading string matching REGEXP.
-
-REGEXP defaults to \"[ \\t\\n\\r]+\"."
-      (if (string-match (concat "\\`\\(?:" (or  regexp "[ \t\n\r]+")"\\)") string)
-          (replace-match "" t t string)
-        string))))
-
 (require 'magit)
 (require 'magit-patch)
 
@@ -239,6 +228,14 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
           (goto-char orig)
           nil)))))
 
+(defsubst magit-patch-changelog-string-trim-left (string &optional regexp)
+  "Trim STRING of leading string matching REGEXP.
+
+REGEXP defaults to \"[ \\t\\n\\r]+\"."
+  (if (string-match (concat "\\`\\(?:" (or  regexp "[ \t\n\r]+")"\\)") string)
+      (replace-match "" t t string)
+    string))
+
 (defun magit-patch-changelog--fixline (&optional triggering)
   "Patch up ChangeLog entry on current line.  Move point to TRIGGERING ref.
 
@@ -278,9 +275,10 @@ Returns nil if deleted line, t otherwise."
                 (begin-header (previous-single-property-change
                                (point) 'magit-patch-changelog-header
                                nil line-beg)))
-            (setq commentary (string-trim-left (buffer-substring
-                                                (max begin-loc begin-header)
-                                                line-end) "[(,): ]+"))))
+            (setq commentary (magit-patch-changelog-string-trim-left
+                              (buffer-substring
+                               (max begin-loc begin-header)
+                               line-end) "[(,): ]+"))))
         (setq changelog-refs (nreverse changelog-refs))
         (kill-region line-beg (min (1+ line-end) (point-max)))
         (when changelog-header
@@ -569,7 +567,7 @@ Limit patch to FILES, if non-nil."
                    do (sit-for 0.1)
                    finally
                    (unless (magit-commit-message-buffer)
-                     (user-error "magit-commit-create failed")))
+                     (user-error "`magit-commit-create' failed")))
           (cl-loop repeat 50
                    with commit-buffer = (magit-commit-message-buffer)
                    for diff-buffer = (with-current-buffer commit-buffer
@@ -588,7 +586,7 @@ Limit patch to FILES, if non-nil."
                            (while (setq my-current-defun
                                         (magit-patch-changelog-next-defun my-current-defun))
                              (magit-commit-add-log))))
-                     (user-error "magit-commit-diff failed"))
+                     (user-error "`magit-commit-diff' failed"))
                    (with-current-buffer commit-buffer
                      (message (buffer-string)) ;; without this, point appears mid-buffer
                      (message "")              ;; without this, minibuffer explodes

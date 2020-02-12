@@ -468,9 +468,9 @@ font-lock-face will be one of magit-process-ok, magit-process-ng, or nil."
                                            (or (oref section content)
                                                (oref section end))
                                            (oref section end))
-                                         :face    ,(get-text-property
-                                                    (oref section start)
-                                                    'font-lock-face))))))))))
+                                         :face ,(get-text-property
+                                                 (oref section start)
+                                                 'font-lock-face))))))))))
         side-effect))))
 
 ;;;###autoload
@@ -513,7 +513,7 @@ Limit patch to FILES, if non-nil."
                                (magit-run-git
                                 "format-patch" "HEAD^" args "--" files)
                                (when (member "--cover-letter" args)
-                                   (message "Ignoring --cover-letter")))
+                                 (message "Ignoring --cover-letter")))
                            (display-warning
                             'magit-patch-changelog
                             (format "Unknown commit status\n%s"

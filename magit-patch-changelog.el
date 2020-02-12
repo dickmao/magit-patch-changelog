@@ -621,6 +621,11 @@ Limit patch to FILES, if non-nil."
   (transient-append-suffix 'magit-patch-create "c"
     '("e" "Create patches for Emacs" magit-patch-changelog-create)))
 
+(defun magit-patch-changelog-teardown ()
+  "Teardown `magit-patch-changelog'."
+  (interactive)
+  (transient-remove-suffix 'magit-patch-create "c"))
+
 ;;; _
 (provide 'magit-patch-changelog)
 ;;; magit-patch-changelog.el ends here

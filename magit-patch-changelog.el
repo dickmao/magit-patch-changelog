@@ -27,6 +27,12 @@
 
 ;; Generate a patch according to emacs-mirror/CONTRIBUTE.
 
+;; To use this package, simply add below code in your init.el
+
+;;   (with-eval-after-load 'magit
+;;     (require 'magit-patch-changelog)
+;;     (magit-patch-changelog-setup))
+
 ;;; Code:
 
 (require 'magit)
@@ -608,8 +614,12 @@ Limit patch to FILES, if non-nil."
       (error (funcall cleanup)
              (user-error "%s" (error-message-string err))))))
 
-(transient-append-suffix 'magit-patch-create "c"
-  '("e" "Create patches for Emacs" magit-patch-changelog-create))
+;;;###autoload
+(defun magit-patch-changelog-setup ()
+  "Setup `magit-patch-changelog'."
+  (interactive)
+  (transient-append-suffix 'magit-patch-create "c"
+    '("e" "Create patches for Emacs" magit-patch-changelog-create)))
 
 ;;; _
 (provide 'magit-patch-changelog)

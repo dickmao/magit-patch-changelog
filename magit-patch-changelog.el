@@ -464,13 +464,13 @@ font-lock-face will be one of magit-process-ok, magit-process-ng, or nil."
                     (let (deactivate-mark)
                       (when (string-match-p "^commit" commit)
                         (setq side-effect
-                              `(:content ,(buffer-substring-no-properties
-                                           (or (oref section content)
-                                               (oref section end))
-                                           (oref section end))
-                                         :face ,(get-text-property
-                                                 (oref section start)
-                                                 'font-lock-face))))))))))
+                              (list :content (buffer-substring-no-properties
+                                              (or (oref section content)
+                                                  (oref section end))
+                                              (oref section end))
+                                    :face (get-text-property
+                                           (oref section start)
+                                           'font-lock-face))))))))))
         side-effect))))
 
 ;;;###autoload

@@ -1,4 +1,4 @@
-;;; magit-patch-changelog.el --- Git format-patch for CONTRIBUTE -*- lexical-binding: t; coding: utf-8 -*-
+;;; magit-patch-changelog.el --- Generate a patch according to emacs-mirror/CONTRIBUTE -*- lexical-binding: t; coding: utf-8 -*-
 
 ;; Copyright (C) 2019 The Authors of magit-patch-changelog.el
 

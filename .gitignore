@@ -1,4 +1,3 @@
 .ecukes*
 .cask*
 test/test-install
-*.elc

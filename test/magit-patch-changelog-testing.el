@@ -25,8 +25,6 @@
                     (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest args) t)))
                       (apply f args))))))
 
-(magit-patch-changelog-setup)
-
 ;;; _
 (provide 'magit-patch-changelog-testing)
 ;;; magit-patch-changelog-testing.el ends here

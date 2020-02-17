@@ -513,7 +513,7 @@ Limit patch to FILES, if non-nil."
                                (magit-run-git
                                 "format-patch" "HEAD^" args "--" files)
                                (when (member "--cover-letter" args)
-                                   (message "Ignoring --cover-letter")))
+                                 (message "Ignoring --cover-letter")))
                            (display-warning
                             'magit-patch-changelog
                             (format "Unknown commit status\n%s"

@@ -28,7 +28,15 @@ Then
 ::
 
    M-x package-refresh-contents RET
+   M-x package-initialize RET
    M-x package-install RET magit-patch-changelog RET
+
+And, finally add (before any mentions of magit) in your ``.emacs``,
+
+::
+
+   (with-eval-after-load 'magit
+     (require 'magit-patch-changelog))
 
 Alternatively, copy ``magit-patch-changelog.el`` to a directory among ``C-h v RET load-path`` and add ``(require 'magit-patch-changelog)`` to ``.emacs``.
 

@@ -27,6 +27,12 @@
 
 ;; Generate a patch according to emacs-mirror/CONTRIBUTE.
 
+;; To use this package, simply add below code in your init.el
+
+;;   (with-eval-after-load 'magit
+;;     (require 'magit-patch-changelog)
+;;     (magit-patch-changelog-setup))
+
 ;;; Code:
 
 (require 'magit)
@@ -464,13 +470,13 @@ font-lock-face will be one of magit-process-ok, magit-process-ng, or nil."
                     (let (deactivate-mark)
                       (when (string-match-p "^commit" commit)
                         (setq side-effect
-                              `(:content ,(buffer-substring-no-properties
-                                           (or (oref section content)
-                                               (oref section end))
-                                           (oref section end))
-                                         :face    ,(get-text-property
-                                                    (oref section start)
-                                                    'font-lock-face))))))))))
+                              (list :content (buffer-substring-no-properties
+                                              (or (oref section content)
+                                                  (oref section end))
+                                              (oref section end))
+                                    :face (get-text-property
+                                           (oref section start)
+                                           'font-lock-face))))))))))
         side-effect))))
 
 ;;;###autoload
@@ -513,7 +519,7 @@ Limit patch to FILES, if non-nil."
                                (magit-run-git
                                 "format-patch" "HEAD^" args "--" files)
                                (when (member "--cover-letter" args)
-                                   (message "Ignoring --cover-letter")))
+                                 (message "Ignoring --cover-letter")))
                            (display-warning
                             'magit-patch-changelog
                             (format "Unknown commit status\n%s"
@@ -608,8 +614,17 @@ Limit patch to FILES, if non-nil."
       (error (funcall cleanup)
              (user-error "%s" (error-message-string err))))))
 
-(transient-append-suffix 'magit-patch-create "c"
-  '("e" "Create patches for Emacs" magit-patch-changelog-create))
+;;;###autoload
+(defun magit-patch-changelog-setup ()
+  "Setup `magit-patch-changelog'."
+  (interactive)
+  (transient-append-suffix 'magit-patch-create "c"
+    '("e" "Create patches for Emacs" magit-patch-changelog-create)))
+
+(defun magit-patch-changelog-teardown ()
+  "Teardown `magit-patch-changelog'."
+  (interactive)
+  (transient-remove-suffix 'magit-patch-create "c"))
 
 ;;; _
 (provide 'magit-patch-changelog)

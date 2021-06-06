@@ -460,7 +460,7 @@ font-lock-face will be one of magit-process-ok, magit-process-ng, or nil."
                          (commit (cl-second
                                   (split-string
                                    what
-                                   (format "\\s-*%c\\s-*" magit-ellipsis)))))
+                                   (format "\\s-*%s\\s-*" magit-ellipsis)))))
                     (let (deactivate-mark)
                       (when (string-match-p "^commit" commit)
                         (setq side-effect

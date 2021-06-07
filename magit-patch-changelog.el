@@ -494,7 +494,7 @@ Limit patch to FILES, if non-nil."
                  (cancel-timer magit-patch-changelog-local-timer)
                  (setq-local magit-patch-changelog-local-timer nil))
                (unless (string= feature-branch (magit-get-current-branch))
-                 (magit-run-git "checkout" feature-branch))
+                 (magit-run-git "checkout" "-f" feature-branch))
                (when (magit-commit-p ephemeral-branch)
                  (magit-run-git "branch" "-D" ephemeral-branch))))
            (magit-toplevel)))

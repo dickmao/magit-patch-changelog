@@ -486,40 +486,6 @@ Limit patch to FILES, if non-nil."
   (let* ((feature-branch (magit-get-current-branch))
          (ephemeral-branch (make-temp-name (concat feature-branch "-")))
          (git-commit-major-mode 'magit-patch-changelog-mode)
-         (format-patch
-          (lambda ()
-            (magit-with-toplevel
-              (cl-loop repeat 50
-                       for status = (magit-patch-changelog--commit-status)
-                       until (and status (plist-get status :face))
-                       do (sit-for 0.1)
-                       finally
-                       (let ((avoid-incense
-                              (format "COMMIT_EDITMSG saved in %s"
-                                      (directory-file-name (magit-git-dir))))
-                             (warning-buffer "*Magit ChangeLog*"))
-                         (if status
-                             (if (eq (plist-get status :face)
-                                     'magit-process-ng)
-                                 (display-warning
-                                  'magit-patch-changelog
-                                  (format "\n%s\n%s"
-                                          (plist-get status :content)
-                                          avoid-incense)
-                                  :error
-                                  warning-buffer)
-                               (when (buffer-live-p (get-buffer warning-buffer))
-                                 (kill-buffer warning-buffer))
-                               (magit-run-git
-                                "format-patch" "HEAD^" args "--" files)
-                               (when (member "--cover-letter" args)
-                                 (message "Ignoring --cover-letter")))
-                           (display-warning
-                            'magit-patch-changelog
-                            (format "Unknown commit status\n%s"
-                                    avoid-incense)
-                            :error
-                            warning-buffer)))))))
          (cleanup
           (apply-partially
            (lambda (toplevel)
@@ -532,6 +498,42 @@ Limit patch to FILES, if non-nil."
                (when (magit-commit-p ephemeral-branch)
                  (magit-run-git "branch" "-D" ephemeral-branch))))
            (magit-toplevel)))
+         (format-patch
+          (lambda ()
+            (unwind-protect
+                (magit-with-toplevel
+                  (cl-loop repeat 50
+                           for status = (magit-patch-changelog--commit-status)
+                           until (and status (plist-get status :face))
+                           do (sit-for 0.1)
+                           finally
+                           (let ((avoid-incense
+                                  (format "COMMIT_EDITMSG saved in %s"
+                                          (directory-file-name (magit-git-dir))))
+                                 (warning-buffer "*Magit ChangeLog*"))
+                             (if status
+                                 (if (eq (plist-get status :face)
+                                         'magit-process-ng)
+                                     (display-warning
+                                      'magit-patch-changelog
+                                      (format "\n%s\n%s"
+                                              (plist-get status :content)
+                                              avoid-incense)
+                                      :error
+                                      warning-buffer)
+                                   (when (buffer-live-p (get-buffer warning-buffer))
+                                     (kill-buffer warning-buffer))
+                                   (magit-run-git
+                                    "format-patch" "HEAD^" args "--" files)
+                                   (when (member "--cover-letter" args)
+                                     (message "Ignoring --cover-letter")))
+                               (display-warning
+                                'magit-patch-changelog
+                                (format "Unknown commit status\n%s"
+                                        avoid-incense)
+                                :error
+                                warning-buffer)))))
+              (funcall cleanup))))
 
          ;; Dynamic-let of `git-commit-setup-hook' is closure-tidy.
          ;; But because `magit-commit-create' is async, closure needs to be
@@ -548,13 +550,13 @@ Limit patch to FILES, if non-nil."
                   (setq-local magit-patch-changelog-local-timer
                               (run-with-idle-timer 1 t #'magit-patch-changelog-xref)))
                 (add-hook 'with-editor-post-finish-hook format-patch nil t)
+                (add-hook 'with-editor-post-cancel-hook cleanup t t)
                 (add-hook 'kill-emacs-hook cleanup)
                 (dolist (hook '(with-editor-post-cancel-hook
                                 with-editor-post-finish-hook))
                   (add-hook hook
                             (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
-                            nil t)
-                  (add-hook hook cleanup t t)))))))
+                            nil t)))))))
     (condition-case err
         (progn
           (magit-branch-checkout ephemeral-branch "master")

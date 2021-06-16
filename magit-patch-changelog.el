@@ -566,16 +566,16 @@ Limit patch to FILES, if non-nil."
           (magit-commit-create)
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)
-                   do (sit-for 0.1)
+                   do (accept-process-output nil 0.1)
                    finally
                    (unless (magit-commit-message-buffer)
                      (user-error "`magit-commit-create' failed")))
-          (cl-loop repeat 50
-                   with commit-buffer = (magit-commit-message-buffer)
+          (cl-loop with commit-buffer = (magit-commit-message-buffer)
+                   repeat 50
                    for diff-buffer = (with-current-buffer commit-buffer
                                        (magit-get-mode-buffer 'magit-diff-mode))
                    until diff-buffer
-                   do (sit-for 0.1)
+                   do (accept-process-output nil 0.1)
                    finally
                    (if diff-buffer
                        (with-current-buffer diff-buffer
@@ -584,13 +584,19 @@ Limit patch to FILES, if non-nil."
                                 (magit-commit-add-log-insert-function
                                  'magit-patch-changelog-add-log-insert)
                                 (add-log-current-defun-function
-                                 (lambda () my-current-defun)))
+                                 (lambda () my-current-defun))
+                                (magit--refresh-cache (list (cons 0 0))))
                            (while (setq my-current-defun
                                         (magit-patch-changelog-next-defun my-current-defun))
-                             (magit-commit-add-log))))
+                             (cl-destructuring-bind (seconds num-gc seconds-gc)
+                                 (benchmark-run (magit-commit-add-log))
+                               (message (concat "%s: took %s seconds,"
+                                                " with %s gc runs taking %s seconds")
+                                        my-current-defun seconds num-gc seconds-gc)))))
                      (user-error "`magit-commit-diff' failed"))
                    (with-current-buffer commit-buffer
-                     (message (buffer-string)) ;; without this, point appears mid-buffer
+                     (let ((inhibit-message t))
+                       (message (buffer-string))) ;; without this, point appears mid-buffer
                      (message "")              ;; without this, minibuffer explodes
                      (when with-editor-show-usage
                        (with-editor-usage-message))

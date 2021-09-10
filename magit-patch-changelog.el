@@ -32,6 +32,11 @@
 (require 'magit)
 (require 'magit-patch)
 
+(defcustom magit-patch-changelog-master-branch "master"
+  "The branch to patch against."
+  :group 'magit-patch-changelog
+  :type 'string)
+
 (defcustom magit-patch-changelog-fancy-xref nil
   "Jump to diff referenced by ChangeLog entry after idling one second."
   :group 'magit-patch-changelog
@@ -559,7 +564,7 @@ Limit patch to FILES, if non-nil."
                             nil t)))))))
     (condition-case err
         (progn
-          (magit-branch-checkout ephemeral-branch "master")
+          (magit-branch-checkout ephemeral-branch magit-patch-changelog-master-branch)
           (magit-merge-assert)
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))

@@ -491,10 +491,21 @@ Limit patch to FILES, if non-nil."
   (let* ((feature-branch (magit-get-current-branch))
          (ephemeral-branch (make-temp-name (concat feature-branch "-")))
          (git-commit-major-mode 'magit-patch-changelog-mode)
+         (auto-stubber
+          (lambda (&rest _args)
+            (and (eq major-mode 'magit-patch-changelog-mode)
+                 (or (magit-patch-changelog--contains
+                      'magit-patch-changelog-header)
+                     (magit-patch-changelog--contains
+                      'magit-patch-changelog-loc)))))
          (cleanup
           (apply-partially
            (lambda (toplevel)
              (let ((default-directory toplevel))
+               (when auto-fill-function
+                 (remove-function
+                  (symbol-function auto-fill-function)
+                  auto-stubber))
                (when (timerp magit-patch-changelog-local-timer)
                  (cancel-timer magit-patch-changelog-local-timer)
                  (setq-local magit-patch-changelog-local-timer nil))
@@ -569,6 +580,7 @@ Limit patch to FILES, if non-nil."
           (magit-run-git "merge" "--squash" feature-branch)
           (cl-assert (memq 'magit-commit-diff server-switch-hook))
           (magit-commit-create)
+
           (cl-loop repeat 50
                    until (magit-commit-message-buffer)
                    do (accept-process-output nil 0.1)
@@ -605,18 +617,10 @@ Limit patch to FILES, if non-nil."
                      (message "")              ;; without this, minibuffer explodes
                      (when with-editor-show-usage
                        (with-editor-usage-message))
-
-                     ;; The variable `auto-fill-function' should be buffer local
-                     ;; so this advise shouldn't pollute.
                      (when auto-fill-function
                        (add-function
                         :before-until (symbol-function auto-fill-function)
-                        (lambda (&rest _args)
-                          (and (eq major-mode 'magit-patch-changelog-mode)
-                               (or (magit-patch-changelog--contains
-                                    'magit-patch-changelog-header)
-                                   (magit-patch-changelog--contains
-                                    'magit-patch-changelog-loc))))))
+                        auto-stubber))
                      (goto-char (point-min)))))
       (error (funcall cleanup)
              (user-error "%s" (error-message-string err))))))

@@ -488,7 +488,8 @@ Limit patch to FILES, if non-nil."
    (let ((args (transient-args 'magit-patch-create)))
      (list (-filter #'stringp args)
            (cdr (assoc "--" args)))))
-  (let* ((feature-branch (magit-get-current-branch))
+  (let* (commit-buffer
+         (feature-branch (magit-get-current-branch))
          (ephemeral-branch (make-temp-name (concat feature-branch "-")))
          (git-commit-major-mode 'magit-patch-changelog-mode)
          (auto-stubber
@@ -506,6 +507,9 @@ Limit patch to FILES, if non-nil."
                  (remove-function
                   (symbol-function auto-fill-function)
                   auto-stubber))
+               (when (buffer-live-p commit-buffer)
+                 (with-current-buffer commit-buffer
+                   (ignore-errors (with-editor-cancel t))))
                (when (timerp magit-patch-changelog-local-timer)
                  (cancel-timer magit-patch-changelog-local-timer)
                  (setq-local magit-patch-changelog-local-timer nil))
@@ -573,7 +577,7 @@ Limit patch to FILES, if non-nil."
                   (add-hook hook
                             (apply-partially #'remove-hook 'kill-emacs-hook cleanup)
                             nil t)))))))
-    (condition-case err
+    (condition-case-unless-debug err
         (progn
           (magit-branch-checkout ephemeral-branch magit-patch-changelog-master-branch)
           (magit-merge-assert)
@@ -587,8 +591,8 @@ Limit patch to FILES, if non-nil."
                    finally
                    (unless (magit-commit-message-buffer)
                      (user-error "`magit-commit-create' failed")))
-          (cl-loop with commit-buffer = (magit-commit-message-buffer)
-                   repeat 50
+          (setq commit-buffer (magit-commit-message-buffer))
+          (cl-loop repeat 50
                    for diff-buffer = (with-current-buffer commit-buffer
                                        (magit-get-mode-buffer 'magit-diff-mode))
                    until diff-buffer
@@ -613,8 +617,10 @@ Limit patch to FILES, if non-nil."
                      (user-error "`magit-commit-diff' failed"))
                    (with-current-buffer commit-buffer
                      (let ((inhibit-message t))
-                       (message (buffer-string))) ;; without this, point appears mid-buffer
-                     (message "")              ;; without this, minibuffer explodes
+                       ;; without this, point appears mid-buffer
+                       (message "%s" (buffer-string)))
+                     ;; without this, minibuffer explodes
+                     (message "")
                      (when with-editor-show-usage
                        (with-editor-usage-message))
                      (when auto-fill-function

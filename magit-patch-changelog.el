@@ -604,16 +604,16 @@ Limit patch to FILES, if non-nil."
                    (if diff-buffer
                        (with-current-buffer diff-buffer
                          (goto-char (point-min))
-                         (let* (my-current-defun
-                                (magit-commit-add-log-insert-function
-                                 'magit-patch-changelog-add-log-insert)
-                                (add-log-current-defun-function
-                                 (lambda () my-current-defun))
-                                (magit--refresh-cache (list (cons 0 0))))
+                         (let (my-current-defun
+                               (magit--refresh-cache (list (cons 0 0))))
                            (while (setq my-current-defun
                                         (magit-patch-changelog-next-defun my-current-defun))
                              (cl-destructuring-bind (seconds num-gc seconds-gc)
-                                 (benchmark-run (magit-commit-add-log))
+                                 (let ((magit-commit-add-log-insert-function
+                                        'magit-patch-changelog-add-log-insert)
+                                       (add-log-current-defun-function
+                                        (apply-partially #'identity my-current-defun)))
+                                   (benchmark-run (magit-commit-add-log)))
                                (message (concat "%s: took %s seconds,"
                                                 " with %s gc runs taking %s seconds")
                                         my-current-defun seconds num-gc seconds-gc)))))

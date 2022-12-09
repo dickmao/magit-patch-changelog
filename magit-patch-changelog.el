@@ -6,7 +6,7 @@
 ;; Version: 0.1.0
 ;; Keywords: git tools vc
 ;; URL: https://github.com/dickmao/magit-patch-changelog
-;; Package-Requires: ((emacs "25.1") (magit "3.3.0"))
+;; Package-Requires: ((emacs "28.1") (magit "3.3.0"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -63,10 +63,10 @@
              (eq 'magit-diff-added face)))))
 
 (defsubst magit-patch-changelog--single-property-change (prop x direction limit)
-  "`previous-single-property-change' is off-by-one coming and going.
+  "`previous-single-property-change` is off-by-one coming and going.
 
 Return position preceding character differing in PROP of X in
-direction DIRECTION up to LIMIT.  By 'preceding' we mean positionally
+direction DIRECTION up to LIMIT.  By preceding we mean positionally
 after in the case direction is -1 and before if direction is +1."
   (let ((result
          (funcall (if (< direction 0)
@@ -196,11 +196,11 @@ Write to BUFFER the ChangeLog entry \"* FILE (DEFUN):\"."
             (backward-char)))))))
 
 (easy-mmode-defmap magit-patch-changelog-mode-map
-                   '(("\M-." . magit-patch-changelog-xref)
-                     ([M-down] . magit-patch-changelog-agg-down)
-                     ([M-up] . magit-patch-changelog-agg-up))
-                   "Keymap for the `magit-patch-changelog-mode'."
-                   :group 'magit-patch)
+  '(("\M-." . magit-patch-changelog-xref)
+    ([M-down] . magit-patch-changelog-agg-down)
+    ([M-up] . magit-patch-changelog-agg-up))
+  "Keymap for the `magit-patch-changelog-mode'."
+  :group 'magit-patch)
 
 (defun magit-patch-changelog--goto-ref (direction &optional limit)
   "Move point to next ChangeLog ref in DIRECTION up to LIMIT."
@@ -415,9 +415,9 @@ Move (foo, >b< ar) to (foo)\n(bar)."
            (point) prop nil line-end)))))
 
 (defun magit-patch-changelog-xref (&optional explicit-p)
-  "Jump to diff referenced by text property `magit-patch-changelog-loc'.
+  "Jump to diff referenced by text property magit-patch-changelog-loc.
 
-EXPLICIT-P exploits the 'interactive p' trick to determine if called via [M-.].
+EXPLICIT-P exploits the interactive p trick to determine if called via [M-.].
 Under EXPLICIT-P, jump to definition at point.  Otherwise, jump to definition of
 first function reference on the line."
   (interactive "p")
